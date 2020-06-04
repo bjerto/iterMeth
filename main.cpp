@@ -33,6 +33,7 @@ private:
     int checkIsZeros();
     int checkDUS();
     double rowSumWithoutDiagonal(int row);
+    void rearrangeRows();
     double epsilon; //used for checking if the row diverges
     static const int delay = 15, wait = 5; //amount of steps done without checking for divergence and amount of steps allowing delta to increase
 };
@@ -191,6 +192,69 @@ double Matrix::rowSumWithoutDiagonal(int row)
     return sum;
 }
 
+void Matrix::rearrangeRows()
+{
+    double* sum = sums(); //calculating sums of elements and store them
+    int swapsMatrix[height][height]; //Matrix of swaps that can be done to make the system solvability status
+    int* swapsNumPerRow = new int[height]; //number of possible swaps for the row
+    for(int i=0; i < height; i++) {
+        swapsNumPerRow[i] = 0;
+    }
+    int isAnyDiagonalGT = 0; //shows if at least one diagonal element in any row is strictly larger than the sum of absolute amounts of others
+    for(int i = 0; i<height; i++)	//making coefficients swap table. 0 - swap is impossible (0 on diagonal), 1 - swap is possible, but the requirement is not met, 2 - min requirement is met, 3 - max requirement is met;
+    {
+        for(int j = 0; j<height; j++){
+            double oth = sum[i]-abs(coefficients[i][j]);	//checking which swaps would do
+            if (coefficients[i][j]!=0){
+                swapsNumPerRow[i] ++;
+                swapsMatrix[j][i] = 1;
+                if (abs(coefficients[i][j]) >= oth){
+                    swapsMatrix[j][i]++;
+                    if (abs(coefficients[i][j]) > oth){
+                        swapsMatrix[j][i]++;
+                        if (i==j) {
+                            isAnyDiagonalGT = 1;
+                        }
+                    }
+                }
+                else {
+                    if (i==j) {
+                    }
+                }
+            }
+            else{
+                swapsMatrix[j][i] = 0;
+                if (i==j){
+                    isAnyDiagonalGT = 0;
+                }
+            }
+        }
+    }
+    delete[] sum;
+
+    int where;
+    int min;
+
+    for (int k = 0; k < height; k++) {
+        min = find_next(swapsNumPerRow, swapsMatrix[0], where); //find coefficients row with the least amount of options
+        if (min == -1) //if there are no non-zero options, leave with error code
+            return 2;
+        if (swapsMatrix[min][where] == 1) //if it is not even equal to the sum, zero the flag, we'll have to trace
+            isAllDiagonalGTE = 0;
+        else if (swapsMatrix[min][where] == 3) //if the diagonal element is larger than the sum, raise the flag
+            isAnyDiagonalGT = 1;
+        for (int i = 0; i < height; i++)	//cross it out for other rows
+            if (i != min)
+                if (swapsMatrix[where][i]) {
+                    swapsMatrix[where][i] = 0;
+                    swapsNumPerRow[i] -= 1;
+                }
+        permutation[min] = where;	//save this permutation
+        swapsNumPerRow[min] = 2*height + 1;	//so that we wont come back to this row
+    }
+    return !(isAllDiagonalGTE && isAnyDiagonalGT);
+}
+
 int Matrix::getSolvabilityStatus(int &isZeros, int *permutation){ //return 0 - is 100% solution, 1 - solve under control, 2 - totally unsolvable, replaces if 0's are met;
     isZeros = checkIsZeros();//shows if there are zero diagonal elements in the original Matrix => if you should replace things
     if (!isZeros)
@@ -199,7 +263,7 @@ int Matrix::getSolvabilityStatus(int &isZeros, int *permutation){ //return 0 - i
     }
     else
     {
-        permutateRows();
+        rearrangeRows();
         int isAllDiagonalGTE = 1; //shows if all of the diagonal elements are at least equal to the sum of others
         double* sum = sums(); //calculating sums of elements and store them
         int swapsMatrix[height][height]; //Matrix of swaps that can be done to make the system solvability status
@@ -261,7 +325,7 @@ int Matrix::getSolvabilityStatus(int &isZeros, int *permutation){ //return 0 - i
             permutation[min] = where;	//save this permutation
             swapsNumPerRow[min] = 2*height + 1;	//so that we wont come back to this row
         }
-    return !(isAllDiagonalGTE && isAnyDiagonalGT);
+        return !(isAllDiagonalGTE && isAnyDiagonalGT);
     }
 }
 
