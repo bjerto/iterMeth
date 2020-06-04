@@ -11,18 +11,16 @@ public:
     Matrix();
     Matrix(const char* file);
     ~Matrix();
-    void print(bool sci = true) const; //prints the system (coefficients only)
+    void print() const; //prints the system (coefficients only)
     void prn_solutions(bool sci = true); //prints the solutions only
-    void read_from_file(char* fname); //initializes 2-dimensional array + an array of solutions in heap from file
 private:
-    void fill(ifstream& f); //fills the array from the stream f
     void sub(int from, int row, double val); //subtracts the row "row" from the row "from"
     void swap(double*& a, double*& b); //swap the rows coefficients and b
     void error(int err) const; // prints an error based on coefficients code
     void rearrange(int n[]);	//rearranges the Matrix according to coefficients given permutation
     double* sums() const; //calculates the sums of elements
-    int solve(); //calculate the answers; errors: 0 - the system is solved; 1 - the system is solvable but the row diverges; 2 - the system is not solvable because of zeros
-    int solvable(int&zeros, int permutation[]); ///return 0 - is 100% solvable, 1 - solve under control, 2 - totally unsolvable, replaces if 0's are met;
+    int solve(); //calculate the answers; errors: 0 - the system is solved; 1 - the system is solvable but the row diverges; 2 - the system is not get_solvability_status because of zeros
+    int getSolvabilityStatus(int &isZeros, int *permutation); //return 0 - is 100% solvable, 1 - solve under control, 2 - totally unsolvable, replaces if 0's are met;
     int nonzero(int n) const; // finds the first string with non-zero element
     int find_next(int n[], int b[], int& place) const; //returns id of the next element to choose place for and where you should place it
     int find_max(int* b, int sz) const; //returns id of the largest element in array coefficients.
@@ -32,6 +30,9 @@ private:
     double* solutions; 
     int width;
     int height;
+    int checkIsZeros();
+    int checkDUS();
+    double rowSumWithoutDiagonal(int row);
     double epsilon; //used for checking if the row diverges
     static const int delay = 15, wait = 5; //amount of steps done without checking for divergence and amount of steps allowing delta to increase
 };
@@ -103,29 +104,6 @@ int Matrix::find_max(int* b, int sz) const	 //returns id of the largest element 
     return max;
 }
 
-void Matrix::read_from_file(char* fname)	//initializes 2-dimensional array + an array of solutions in heap from file
-{
-    ifstream in;
-    in.open(fname);
-    fill(in);
-    in.close();
-}
-
-void Matrix::fill(ifstream& f)	//fills the array from the stream f
-{
-    f >> height;
-    width = height + 1;
-    f >> epsilon;
-    coefficients = new double*[height];
-    for (int i = 0; i < height; i++)
-        coefficients[i] = new double[width];
-    for (int i = 0; i < height; i++)
-        for (int j = 0; j < width; j++) {
-            assert(f.good());
-            f >> coefficients[i][j];
-        }
-}
-
 void Matrix::sub(int from, int row, double val)	//subtracts the row "row" from the row "from"
 {
     for (int i = row; i < width; i++)
@@ -168,74 +146,134 @@ double* Matrix::sums() const	//calculates the sums of elements
     return sum;
 }
 
-int Matrix::solvable(int& zeros, int permutation[]){ //return 0 - is 100% solvable, 1 - solve under control, 2 - totally unsolvable, replaces if 0's are met;
-    int larger = 0, where, min; //shows if at least one diagonal element in any row is strictly larger than the sum of absolute amounts of others
-    zeros = 0; //shows if there are zero diagonal elements in the original Matrix => if you should replace things
-    int req = 1; //shows if all of the diagonal elements are at least equal to the sum of others
-    double* sum = sums(); //calculating sums of elements and store them
-    int s[height][height]; //Matrix of swaps that can be done to make the system solvable
-    int* num = new int[height]; //number of possible swaps for the row
-    for(int i=0; i < height; i++)
-        num[i] = 0;
+int Matrix::checkIsZeros(){
+    int isZeros = 0; //shows if there are zero diagonal elements in the original Matrix => if you should replace things
     for(int i = 0; i<height; i++)	//making coefficients swap table. 0 - swap is impossible (0 on diagonal), 1 - swap is possible, but the requirement is not met, 2 - min requirement is met, 3 - max requirement is met;
-        for(int j = 0; j<height; j++){
-            double oth = sum[i]-abs(coefficients[i][j]);	//checking which swaps would do
-            if (coefficients[i][j]!=0){
-                num[i] ++;
-                s[j][i] = 1;
-                if (abs(coefficients[i][j]) >= oth){
-                    s[j][i]++;
-                    if (abs(coefficients[i][j]) > oth){
-                        s[j][i]++;
-                        if (i==j)
-                            larger = 1;
+        if (coefficients[i][i]==0)
+        {
+            isZeros = 1;	//if there is coefficients 0 on coefficients diagonal element, raise zero flag and reset the rest (we will be swapping it)
+            break;
+        }
+    return isZeros;
+}
+
+int Matrix::checkDUS(){
+    int isAllDiagonalGTE = 0; //shows if all of the diagonal elements are at least equal to the sum of others
+    int isAnyDiagonalGT = 0; //shows if at least one diagonal element in any row is strictly larger than the sum of absolute amounts of others
+    double* sum = sums(); //calculating sums of elements and store them
+    for(int i = 0; i < height; i++)	//making coefficients swap table. 0 - swap is impossible (0 on diagonal), 1 - swap is possible, but the requirement is not met, 2 - min requirement is met, 3 - max requirement is met;
+    {
+        double sumWithoutDiagonal = rowSumWithoutDiagonal(i);	//checking which swaps would do
+        if (coefficients[i][i] < sumWithoutDiagonal)
+        {
+            isAllDiagonalGTE = 0;
+            break;
+        }
+        else
+        {
+            isAllDiagonalGTE = 1;
+            if (coefficients[i][i] > sumWithoutDiagonal)
+            {
+                isAnyDiagonalGT = 1;
+            }
+        }
+    }
+    delete[] sum;
+    return isAllDiagonalGTE && isAnyDiagonalGT;
+}
+
+double Matrix::rowSumWithoutDiagonal(int row)
+{
+    double sum = 0;
+    for (int i = 0; i < height; ++i)
+        if (i != row)
+            sum += abs(coefficients[row][i]);
+    return sum;
+}
+
+int Matrix::getSolvabilityStatus(int &isZeros, int *permutation){ //return 0 - is 100% solution, 1 - solve under control, 2 - totally unsolvable, replaces if 0's are met;
+    isZeros = checkIsZeros();//shows if there are zero diagonal elements in the original Matrix => if you should replace things
+    if (!isZeros)
+    {
+        return !checkDUS();
+    }
+    else
+    {
+        permutateRows();
+        int isAllDiagonalGTE = 1; //shows if all of the diagonal elements are at least equal to the sum of others
+        double* sum = sums(); //calculating sums of elements and store them
+        int swapsMatrix[height][height]; //Matrix of swaps that can be done to make the system solvability status
+        int* swapsNumPerRow = new int[height]; //number of possible swaps for the row
+        for(int i=0; i < height; i++) {
+            swapsNumPerRow[i] = 0;
+        }
+        int isAnyDiagonalGT = 0; //shows if at least one diagonal element in any row is strictly larger than the sum of absolute amounts of others
+        for(int i = 0; i<height; i++)	//making coefficients swap table. 0 - swap is impossible (0 on diagonal), 1 - swap is possible, but the requirement is not met, 2 - min requirement is met, 3 - max requirement is met;
+        {
+            for(int j = 0; j<height; j++){
+                double oth = sum[i]-abs(coefficients[i][j]);	//checking which swaps would do
+                if (coefficients[i][j]!=0){
+                    swapsNumPerRow[i] ++;
+                    swapsMatrix[j][i] = 1;
+                    if (abs(coefficients[i][j]) >= oth){
+                        swapsMatrix[j][i]++;
+                        if (abs(coefficients[i][j]) > oth){
+                            swapsMatrix[j][i]++;
+                            if (i==j) {
+                                isAnyDiagonalGT = 1;
+                            }
+                        }
+                    }
+                    else {
+                        if (i==j) {
+                            isAllDiagonalGTE = 0;
+                        }
                     }
                 }
-                else
-                if (i==j)
-                    req = 0;
-            }
-            else{
-                s[j][i] = 0;
-                if (i==j){
-                    zeros = 1;	//if there is coefficients 0 on coefficients diagonal element, raise zero flag and reset the rest (we will be swapping it)
-                    req = 1;
-                    larger = 0;
+                else{
+                    swapsMatrix[j][i] = 0;
+                    if (i==j){
+                        isAllDiagonalGTE = 1;
+                        isAnyDiagonalGT = 0;
+                    }
                 }
             }
         }
-    if (!zeros)
-        return !(req && larger);	//if it has no 0's as its diagonal elements, start solving
-    for (int k = 0; k < height; k++) {
-        min = find_next(num, s[0], where); //find coefficients row with the least amount of options
-        if (min == -1) //if there are no non-zero options, leave with error code
-            return 2;
-        if (s[min][where] == 1) //if it is not even equal to the sum, zero the flag, we'll have to trace
-            req = 0;
-        else if (s[min][where] == 3) //if the diagonal element is larger than the sum, raise the flag
-            larger = 1;
-        for (int i = 0; i < height; i++)	//cross it out for other rows
-            if (i != min)
-                if (s[where][i]) {
-                    s[where][i] = 0;
-                    num[i] -= 1;
-                }
-        permutation[min] = where;	//save this permutation
-        num[min] = 2*height + 1;	//so that we wont come back to this row
+        delete[] sum;
+
+        int where;
+        int min;
+
+        for (int k = 0; k < height; k++) {
+            min = find_next(swapsNumPerRow, swapsMatrix[0], where); //find coefficients row with the least amount of options
+            if (min == -1) //if there are no non-zero options, leave with error code
+                return 2;
+            if (swapsMatrix[min][where] == 1) //if it is not even equal to the sum, zero the flag, we'll have to trace
+                isAllDiagonalGTE = 0;
+            else if (swapsMatrix[min][where] == 3) //if the diagonal element is larger than the sum, raise the flag
+                isAnyDiagonalGT = 1;
+            for (int i = 0; i < height; i++)	//cross it out for other rows
+                if (i != min)
+                    if (swapsMatrix[where][i]) {
+                        swapsMatrix[where][i] = 0;
+                        swapsNumPerRow[i] -= 1;
+                    }
+            permutation[min] = where;	//save this permutation
+            swapsNumPerRow[min] = 2*height + 1;	//so that we wont come back to this row
+        }
+    return !(isAllDiagonalGTE && isAnyDiagonalGT);
     }
-    delete[] sum;
-    return !(req && larger);
 }
 
-int Matrix::solve()	//calculate the answers; errors: 0 - the system is solved; 1 - the system is solvable but the row diverges; 2 - the system is not solvable because of zeros
+int Matrix::solve()	//calculate the answers; errors: 0 - the system is solved; 1 - the system is solvable but the row diverges; 2 - the system is not get_solvability_status because of zeros
 {
-    int per[height];
-    int rearr = 0;
-    int err = solvable(rearr, per);
-    if (err == 2)
+    int permutations[height];
+    int isZeros = 0;
+    int solvabilityStatus = getSolvabilityStatus(isZeros, permutations);
+    if (solvabilityStatus == 2)
         return 2;
-    if (rearr)
-        rearrange(per);	//use our new permutation
+    if (isZeros)
+        rearrange(permutations);	//use our new permutation
     print();
     solutions = new double[height];
     for (int i = 0; i < height; i++)
@@ -243,7 +281,7 @@ int Matrix::solve()	//calculate the answers; errors: 0 - the system is solved; 1
     double prev_delta = 0;
     double delta = 0;
     int more = 0;
-    if (err==1){
+    if (solvabilityStatus==1){
         cout<<"Making "<<delay<<" trial steps to make sure the row does not diverge."<<endl;
         for (int i = 0; i < delay; i++) {
             if (prev_delta > delta && !zero(prev_delta - delta))
@@ -284,16 +322,14 @@ double Matrix::step()	//calculates one step and returns maximum delta
     return max_delta;
 }
 
-void Matrix::print(bool sci) const	//prints the system (coefficients only)
+void Matrix::print() const	//prints the system (coefficients only)
 {
     for (int i = 0; i < height; i++) {
         cout << "| ";
         for (int j = 0; j < width - 1; j++) {
-            cout << (sci ? scientific : fixed) << setw(sci ? 14 : 10) << coefficients[i][j] << " ";
+            cout << fixed << setw(10) << coefficients[i][j] << " ";
         }
-        if (sci)
-            cout << scientific;
-        cout << "| " << (sci ? scientific : fixed) << setw(sci ? 14 : 10) << coefficients[i][width - 1] << " |" << endl;
+        cout << "| " << fixed << setw(10) << coefficients[i][width - 1] << " |" << endl;
     }
     cout << endl;
 }
@@ -331,8 +367,7 @@ void Matrix::error(int err) const	// prints an error based on coefficients code
 int main()
 {
     char file[] = "system.txt";
-    Matrix m;
-    m.read_from_file(file);
-    m.print(false);
-    m.prn_solutions(false);
+    Matrix* m = new Matrix(file);
+    m->print();
+    m->prn_solutions(false);
 }
