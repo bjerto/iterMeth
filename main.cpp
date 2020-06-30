@@ -13,7 +13,7 @@ public:
     void newMatrix(); //pamyat' pod matrizu
     void print() const; //pechat'
     int solve(); //opredelenie statusa resheniya: est' ili net
-    int findNext(int *ar, int *array, int &place) const; //opredelenie nailuchshego varianta s naimen'shim kol-vom perestanovok
+    int findNext(int *nonZeroPerRow, int **swapsMatrix, int &place) const; //opredelenie nailuchshego varianta s naimen'shim kol-vom perestanovok
     double iteration(); //visheslenie iterazii i max delta
     int checkIsZeroes(); //proverka na 0
     int checkDUS(); //proverka DUS
@@ -62,16 +62,6 @@ void Matrix::init(const char* file) //chtenie iz faila i zapolnenie
     in.close();
 }
 
-int max_index(int *array, int size)	 //nomer max elementa
-{
-    int max = 0;
-    for (int i = 0; i < size; i++) {
-        if (array[i] > array[max])
-            max = i;
-    }
-    return max;
-}
-
 Matrix::~Matrix()//destruktor
 {
     if (matrix != nullptr)
@@ -80,21 +70,31 @@ Matrix::~Matrix()//destruktor
     delete[] solutions;
 }
 
-int Matrix::findNext(int *ar, int *array, int &place) const	//poisk varianta s naimen'shim kol-vom perestanovok
+int max_index(int *array, int size)	 //nomer max elementa
+{
+    int max = 0;
+    for (int i = 0; i < size; i++) {
+        if (abs(array[i]) > abs(array[max]))
+            max = i;
+    }
+    return max;
+}
+
+int Matrix::findNext(int *nonZeroPerRow, int **swapsMatrix, int &place) const	//poisk varianta s naimen'shim kol-vom perestanovok
 {
     int min = 0;
     place = -1;
     for (int i = 0; i < height; i++) {
-        if (ar[i] == 0)
+        if (nonZeroPerRow[i] == 0)
             return -1;
-        if (ar[i] < ar[min]) {
+        if (nonZeroPerRow[i] < nonZeroPerRow[min]) {
             min = i;
-            place = max_index(array + i * height, height);
+            place = max_index(swapsMatrix[i], height);
         }
         else {
-            if (ar[i] == ar[min]) {
-                int max = max_index(array + i * height, height);
-                if (array[i * height + max] > array[min * height + place]) {
+            if (nonZeroPerRow[i] == nonZeroPerRow[min]) {
+                int max = max_index(swapsMatrix[i], height);
+                if (swapsMatrix[max][i] > swapsMatrix[min][place]) {
                     min = i;
                     place = max;
                 }
@@ -102,7 +102,8 @@ int Matrix::findNext(int *ar, int *array, int &place) const	//poisk varianta s n
         }
     }
     if (min == 0)
-        place = max_index(array, height);
+        place = max_index(swapsMatrix[0], height); //problema v place
+    cout <<endl<< "PLACE=WHERE " << place << endl;
     return min;
 }
 
@@ -157,16 +158,18 @@ double Matrix::getRowSum(int row) //summi strok
     return sum;
 }
 
-double ** Matrix::getPermutatedRows() //perestanovka
+double ** Matrix::getPermutatedRows() //perestanovka //ALARAM
 {
-    int** swapsMatrix = new int*[height];
+    int** swapsMatrix = new int*[height]; //matriza s perestanovkami
     for(int i=0; i < height; i++) {
-        swapsMatrix[i] = new int[height];
+        swapsMatrix[i] = new int[height]; //pamyat'
     }
-    int* swapsNumPerRow = new int[height];
+
+    int* swapsNumPerRow = new int[height]; //kol-vo vozmozhnih perestanovok v stroke
     for(int i=0; i < height; i++) {
         swapsNumPerRow[i] = 0;
     }
+
     for(int i = 0; i<height; i++)
     {
         for(int j = 0; j<height; j++)
@@ -176,18 +179,23 @@ double ** Matrix::getPermutatedRows() //perestanovka
                 swapsMatrix[j][i] = 0;
                 continue;
             }
-            swapsNumPerRow[i] ++;
             swapsMatrix[j][i] = 1;
 
             double otherSum = getRowSum(i) - abs(matrix[i][j]);
             if (abs(matrix[i][j]) == otherSum)
+            {
+                swapsNumPerRow[i]++;
                 swapsMatrix[j][i]++;
+            }
             if (abs(matrix[i][j]) > otherSum)
+            {
                 swapsMatrix[j][i] += 2;
+                swapsNumPerRow[i]++;
+            }
         }
     }
-
-    int* permutations = getPermutations(swapsMatrix, swapsNumPerRow);
+    int* permutations = getPermutations(swapsMatrix, swapsNumPerRow); //zdes' nevernie ukazateli vozvrashautza
+    //print();
 
     for(int i = 0; i < height; ++i)
         delete[] swapsMatrix[i];
@@ -197,22 +205,25 @@ double ** Matrix::getPermutatedRows() //perestanovka
     if (permutations == nullptr)
         return nullptr;
 
-    double** new_coefficients = getPermutatedCoefficients(permutations);
+    double** new_coefficients = getPermutatedCoefficients(permutations); //nevernie vozvrashautza
     delete[] permutations;
 
     return new_coefficients;
 }
 
-int *Matrix::getPermutations(int **swapsMatrix, int *swapsNumPerRow) { //shema perestanovki
+int *Matrix::getPermutations(int **swapsMatrix, int *swapsNumPerRow) { //shema perestanovki NEPRAVILNAYAAAAAAA!!!!!!!!!
     int* permutations = new int[height];
     for(int i = 0; i < height; ++i)
-        permutations[i] = i;
+        permutations[i] = -1;
+
     int where;
     int min;
 
     for (int k = 0; k < height; k++)
     {
-        min = findNext(swapsNumPerRow, swapsMatrix[0], where); //poisk varianta s naimen'shim kol-vom perestanovok
+        min = findNext(swapsNumPerRow, swapsMatrix, where); //poisk varianta s naimen'shim kol-vom perestanovok
+        cout << endl << "///" << endl << where;
+
         if (min == -1)
         {
             delete[] permutations;
@@ -224,21 +235,35 @@ int *Matrix::getPermutations(int **swapsMatrix, int *swapsNumPerRow) { //shema p
                 swapsMatrix[where][i] = 0;
                 swapsNumPerRow[i] -= 1;
             }
-        permutations[min] = where;
+        permutations[min] = where; //vot eto neverno vozvrashaeza
         swapsNumPerRow[min] = 2*height + 1;
     }
+
+    cout << endl << "PERMUTATIONS[i]" << endl;
+    for(int i = 0; i < height; ++i)
+        cout << permutations[i] << "    ";
+
     return permutations;
 }
 
 double ** Matrix::getPermutatedCoefficients(const int *permutations) { //novaya matriza posle perestanovki
     double** newCoefficients = new double*[height];
-    for (int i = 0; i < height; i++)
-        newCoefficients[i] = matrix[permutations[i]];
+    cout << endl << "NEW COEFFICIENTS" << endl;
+    for (int i = 0; i < height; i++) {
+        newCoefficients[i] = matrix[permutations[i]]; //problema kak bi tutb
+        cout << *matrix[permutations[i]] << "   ";
+    }
+    cout << endl << "AFTER ASSIGN PERMUTATIONS ";
+    print();
     return newCoefficients;
+    //delete[] matrix;
+    //matrix = newCoefficients;
+    //return matrix;
 }
 
 int Matrix::solve()	//opredelenie resheniya: est' ili net
 {
+    //print();
     if (checkIsZeroes())
     {
         double ** permutatedCoefficients = getPermutatedRows();
@@ -248,6 +273,9 @@ int Matrix::solve()	//opredelenie resheniya: est' ili net
         {
             delete[] matrix;
             matrix = permutatedCoefficients;
+            cout << " AFTER PERMUTATED COEFFICIENTS ";
+            print();
+
         }
     }
     int solvabilityStatus = !checkDUS();
@@ -271,6 +299,7 @@ int Matrix::solve()	//opredelenie resheniya: est' ili net
 
 double Matrix::checkConvergence() //proverka shodimosty, otslezhivanie delta
 {
+    //print();
     double prevDelta = 0;
     double delta = 0;
     int deltaDecreaseCounter = 0;
@@ -290,6 +319,7 @@ double Matrix::checkConvergence() //proverka shodimosty, otslezhivanie delta
 
 double Matrix::iteration()	//vicheslenie iterazii i max delta
 {
+   // print();
     double maxDelta = 0;
     for (int i = 0; i < height; i++)
     {
@@ -305,6 +335,7 @@ double Matrix::iteration()	//vicheslenie iterazii i max delta
         prevSolutions = abs(prevSolutions - solutions[i]);
         maxDelta = max(prevSolutions, maxDelta);
     }
+    //print();
     return maxDelta;
 }
 
@@ -337,7 +368,7 @@ void Matrix::printSolutions() //pechat' resheniy
         }
         case 1:
         {
-            print();
+           // print();
             cout << "no solutions: DUS isn't executed & matrix diverges";
             break;
         }
@@ -345,6 +376,7 @@ void Matrix::printSolutions() //pechat' resheniy
         {
             print();
             cout << "no solutions: zeroes exist & no appropriate change";
+            break;
         }
         default:
         {

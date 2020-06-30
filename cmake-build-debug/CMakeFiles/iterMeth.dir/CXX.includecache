@@ -1,0 +1,22 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+C:/Users/pc/CLionProjects/iterMeth/main.cpp
+iostream
+-
+fstream
+-
+sstream
+-
+cassert
+-
+iomanip
+-
+cmath
+-
+
